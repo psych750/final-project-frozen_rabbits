@@ -1,0 +1,550 @@
+---
+title: "Data Analysis 1"
+output: html_document
+date: "2023-12-06"
+---
+### Loading in Necessary Packages and Functions
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(psych)
+library(car)
+library(effectsize)
+library(gridExtra)
+library(dplyr)
+library(tinytex)
+library(ggplot2)
+library(janitor) 
+library(data.table)
+library(rockchalk) 
+library(dplyr)
+library(sjmisc)
+source("C:/Users/16089/OneDrive/Desktop/750 submit/Functions.R")
+```
+
+### load in data and convert variables to snake case
+```{r}
+d <- read.csv("C:/Users/16089/OneDrive/Desktop/merged_2.csv")
+d_f <- clean_names(d, case = "snake")
+```
+
+# Model Analysis 1
+
+## Analysing Hypothesized Model
+Research Question 1: Is the effect of infectious rate on closure moderated by the the industrial sector's share of GDP? 
+```{r}
+d_f$infectious_rate <- as.numeric(d_f$cumulative_cases) / as.numeric(d_f$population)
+mod_1 <- lm(closure ~ infectious_rate*industry, data = d_f)
+summary(mod_1)
+```
+
+The interaction seems to be significant according to the model summary, let's test 
+the data against General Linear Model's assumptions:
+
+## Categorizing Quantitative Variable And Testing Model Assumptions 
+Before testing model assumptions, since both variables under interaction term are quantitative, for convenience of analysis and visualization, we we group the continuous values of proportion of industrial sectors' contribution to GDP into categories of 
+"High", "Low" and "Medium", and put them back into the model:
+```{r}
+d_f$infectious_rate <- as.numeric(d_f$cumulative_cases) / as.numeric(d_f$population)
+d_f$infectious_rate_t <- d_f$infectious_rate^.5
+mean_industry <- mean(d_f$industry)
+# Calculate standard deviations for 'industry'
+std_dev = sd(d$industry)
+d$industry_plus = d$industry + std_dev
+d$industry_minus = d$industry - std_dev
+
+d_f <- d_f %>%
+  mutate(industry_group = case_when(
+    industry < mean_industry - std_dev ~ "Low(> 1 sd above the mean)",
+    industry > mean_industry + std_dev ~ "High(< 1 sd below the mean)",
+    TRUE ~ "Medium"
+  ))
+
+d_f$industry_group <- as.factor(d_f$industry_group)
+
+# Relevel to make 'Low' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Low(> 1 sd above the mean)")
+mod1_low <- lm(closure ~ infectious_rate, data = d_f[d_f$industry_group == "Low(> 1 sd above the mean)", ])
+
+# Relevel to make 'Medium' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Medium")
+mod1_medium <- lm(closure ~ infectious_rate, data = d_f[d_f$industry_group == "Medium",])
+
+d_f$industry_group <- relevel(d_f$industry_group, ref = "High(< 1 sd below the mean)")
+mod1_high <- lm(closure ~ infectious_rate, data = d_f[d_f$industry_group == "High(< 1 sd below the mean)",])
+```
+
+### Testing Against Normality Distribution of Error
+
+test the model for data that are in "Low" industry group
+```{r}
+x_norms1 <- modelAssumptions(mod1_low, "NORMAL")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_norms2 <- modelAssumptions(mod1_medium, "NORMAL")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_norms3 <- modelAssumptions(mod1_high, "NORMAL")
+```
+
+All three groups fulfill the normality distribution of error. 
+
+### Testing Against Constant Variance of Error
+test the model for data that are in "Low" industry group
+```{r}
+x_constant1 <-  modelAssumptions(mod1_low, "CONSTANT")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_constant2 <- modelAssumptions(mod1_medium, "CONSTANT")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_constant3 <- modelAssumptions(mod1_high, "CONSTANT")
+```
+
+The "Medium" group seems to have issue of heteroscedasticity
+
+### Testing Against Linearity
+test the model for data that are in "Low" industry group
+```{r}
+x_linear1 <- modelAssumptions(mod1_low, "LINEAR")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_linear2 <- modelAssumptions(mod1_medium, "LINEAR")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_linear3 <- modelAssumptions(mod1_high, "LINEAR")
+```
+
+The "Low" group seems to have issue with linearity, the other groups both slightly 
+have issues with linearity
+
+Since models have issues with linearity and constant variance, we want to transform 
+the variable infectious rate
+
+## Apply Transformation to a predictor and Test the Model Assumptions
+
+We transformed the predictor and fit it into the model
+```{r}
+d_f$infectious_rate <- as.numeric(d_f$cumulative_cases) / as.numeric(d_f$population)
+d_f$infectious_rate_t <- d_f$infectious_rate^.5
+mod_1p <- lm(closure ~ infectious_rate_t*industry, data = d_f)
+
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Low(> 1 sd above the mean)")
+mod1_tlow <- lm(closure ~ infectious_rate_t, data = d_f[d_f$industry_group == "Low(> 1 sd above the mean)", ])
+
+# Relevel to make 'Medium' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Medium")
+mod1_tmedium <- lm(closure ~ infectious_rate_t, data = d_f[d_f$industry_group == "Medium",])
+
+d_f$industry_group <- relevel(d_f$industry_group, ref = "High(< 1 sd below the mean)")
+mod1_thigh <- lm(closure ~ infectious_rate_t, data = d_f[d_f$industry_group == "High(< 1 sd below the mean)",])
+```
+
+### Testing Transformed Model Against Normality Distribution of Error
+
+test the model for data that are in "Low" industry group
+```{r}
+x_norm1t <- modelAssumptions(mod1_tlow, "NORMAL")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_norm2t <- modelAssumptions(mod1_tmedium, "NORMAL")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_norm3t <- modelAssumptions(mod1_thigh, "NORMAL")
+```
+
+After Transformation, all three groups still fulfill the normality distribution of error. 
+
+### Testing Against Constant Variance of Error
+test the model for data that are in "Low" industry group
+```{r}
+x_const1t <- modelAssumptions(mod1_tlow, "CONSTANT")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_const2t <- modelAssumptions(mod1_tmedium, "CONSTANT")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_const3t <- modelAssumptions(mod1_thigh, "CONSTANT")
+```
+
+By applying transformation, the issue of heteroscedasticity seems to be solved
+
+### Testing Against Linearity
+test the model for data that are in "Low" industry group
+```{r}
+x_lin1 <- modelAssumptions(mod1_tlow, "LINEAR")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x_lin2 <- modelAssumptions(mod1_tmedium, "LINEAR")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x_lin3 <- modelAssumptions(mod1_thigh,"LINEAR")
+```
+
+Although the "Low" group still seems to have issue with linearity, but the issue does not seem severe since there are 
+less observation in "Low" group than "Medium" and "High" group
+
+## Analysing Model After Application of Transformation
+```{r}
+mod_1t <- lm(closure ~ infectious_rate_t*industry, data = d_f)
+summary(mod_1t)
+car::Anova(mod_1t, type = 3) %>% eta_squared()
+```
+
+The standard error for interaction term has decreased after applying transformation
+
+### Plotting the graph
+```{r}
+# Plot
+ggplot(d_f, aes(x = infectious_rate_t, y = closure, color = industry_group)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Relationship between Closure Level and Infectious Rate",
+       x = "Infectious Rate (cumulative cases/population)",
+       y = "Closure Level(higher index higher strictness)",
+       color = "the level of\nIndustrial sectors\ncontribution to GDP in %",
+       caption = str_wrap("Closure Level:The data is from Our World in Data website. It includes workplace closure level during the pandemic by country. The higher index represents higher strictness of countries closure policy. https://ourworldindata.org/covid-school-workplace-closures; GDP composition: The data comes from The World Bank. It includes GDP composition by agriculture, industry and service by country, https://wdi.worldbank.org/table/4.2#; Population: The data comes from Worldometer website, https://www.worldometers.info/world-population/population-by-country/#google_vignette", 120)) + theme(plot.title = element_text(size = 13, hjust = 0), legend.title = element_text(size = 10, margin = margin(t = -2, b = -2)),
+    legend.box = "none", plot.caption = element_text(hjust = 0))
+```
+
+Our hypothesis is confirmed. Countries that rely heavily on industrial output for a large part of their economic activity might face greater economic challenges due to the closure of workplaces. To preserve their economic stability, these countries might be more hesitant to shut down workplaces.
+
+## Analysing the Outlier 
+
+```{r}
+x_cooks <- modelCaseAnalysis(mod_1t, Type = "COOKSD") 
+```
+
+Look up the outliers
+```{r}
+d_f[c(76, 84), ]
+```
+
+Look at the influence plot
+```{r}
+x_infs <- modelCaseAnalysis(mod_1p, Type = "INFLUENCEPLOT") 
+```
+
+We might discuss further about whether to exclude high influence points: 
+84: Luxembourg(closure: 861, industry: 11.3(Low), infectious rate: 0.242)
+76: Kiribati (closure: 63, industry: 10(Low), infectious rate: 0
+
+
+# Model Analysis 3
+
+## Analysing Hypothesized Model
+Research Question: 
+
+Furthermore, is the effect of infectious rate on closure moderated by other economic sectors’ share of GDP in a way different than industry? 
+After running model analysis, we found that: 
+There was a statistically significant interaction between infectious rate and agriculture share in GDP.
+There was no statistically significant interaction between infectious rate and service share in GDP.
+There was a statistically significant interaction between infectious rate and manufacturing share in GDP.
+```{r}
+# For agriculture
+mod_agri <- lm(closure ~ infectious_rate_t*agriculture, data = d_f)
+summary(mod_1t)
+car::Anova(mod_agri, type = 3) %>% eta_squared()
+
+# For services
+mod_ser <- lm(closure ~ infectious_rate_t*services, data = d_f)
+summary(mod_1t)
+car::Anova(mod_ser, type = 3) %>% eta_squared()
+
+# For manufacturing
+mod_manu <- lm(closure ~ infectious_rate_t*manufacturing, data = d_f)
+summary(mod_manu)
+car::Anova(mod_manu, type = 3) %>% eta_squared()
+
+```
+
+
+## Draw a facet graph
+
+```{r}
+# Compute mean and standard deviation for each sector
+mean_industry <- mean(d_f$industry, na.rm = TRUE)
+std_dev_industry <- sd(d_f$industry, na.rm = TRUE)
+mean_manufacturing <- mean(d_f$manufacturing, na.rm = TRUE)
+std_dev_manufacturing <- sd(d_f$manufacturing, na.rm = TRUE)
+mean_services <- mean(d_f$services, na.rm = TRUE)
+std_dev_services <- sd(d_f$services, na.rm = TRUE)
+mean_agriculture <- mean(d_f$agriculture, na.rm = TRUE)
+std_dev_agriculture <- sd(d_f$agriculture, na.rm = TRUE)
+
+# Create a new column for each sector group
+d_new <- d_f %>%
+  mutate(
+    industry = case_when(
+      industry < mean_industry - std_dev_industry ~ "Low (< 1 SD below the mean)",
+      industry > mean_industry + std_dev_industry ~ "High (> 1 SD below the mean)",
+      TRUE ~ "Medium"
+    ),
+    manufacturing = case_when(
+      manufacturing < mean_manufacturing - std_dev_manufacturing ~ "Low (< 1 SD below the mean)",
+      manufacturing > mean_manufacturing + std_dev_manufacturing ~ "High (> 1 SD below the mean)",
+      TRUE ~ "Medium"
+    ),
+    services = case_when(
+      services < mean_services - std_dev_services ~ "Low (< 1 SD below the mean)",
+      services > mean_services + std_dev_services ~ "High (> 1 SD below the mean)",
+      TRUE ~ "Medium"
+    ),
+    agriculture = case_when(
+      agriculture < mean_agriculture - std_dev_agriculture ~ "Low (< 1 SD below the mean)",
+      agriculture > mean_agriculture + std_dev_agriculture ~ "High (> 1 SD below the mean)",
+      TRUE ~ "Medium"
+    )
+  )
+
+# Combine the four groups into a single column for facetting
+d_long <- d_new %>%
+  gather(key = "sector_group", value = "group", industry, manufacturing, services, agriculture)
+
+# Create the plot
+d_long$sector_group <- factor(d_long$sector_group, levels = c("industry", "manufacturing", "services", "agriculture"))
+
+ggplot(d_long, aes(x = infectious_rate_t, y = closure, color = group)) +
+  geom_point(size = 1) +  
+  geom_smooth(method = "lm", se = FALSE, size = 1.5) +  
+  theme_minimal() +
+  labs(title = "Relationship between Closure Level and Infectious Rate by Economic Sector",
+       x = "Infectious Rate (cumulative cases / population)",
+       y = "Closure Level",
+       color = "The level of each\neconomic sector's\ncontribution in total GDP") +
+  facet_wrap(~ sector_group, scales = "free", ncol = 2) +
+  scale_color_manual(values = c("Low (< 1 SD below the mean)" = "#1f78b4", 
+                                "Medium" = "#33a02c", 
+                                "High (> 1 SD below the mean)" = "#e31a1c")) +
+  theme(legend.text = element_text(size = 7),
+        plot.caption = element_text(hjust = 0, size = 7)) +
+  labs(caption = "Closure Level: The data is from Our World in Data website. It includes workplace closure level during the pandemic by country. The higher index\nrepresents higher strictness of countries' closure policy. https://ourworldindata.org/covid-school-workplace-closures;\nGDP composition: The data comes from The World Bank. It includes GDP composition by agriculture, industry, and service by country,\nhttps://wdi.worldbank.org/table/4.2#")
+```
+
+The hypothesis is confirmed. Agriculture and services may not be as severely influenced 
+by workplace closure as industry. Service-based economies might have greater flexibility 
+to adapt to closures, as more jobs in this sector can transition to remote work. 
+This can influence the extent and stringency of workplace closure policies. 
+
+
+# Model Analysis 3
+
+## Analysing Hypothesized Model
+Does industrial sector's share of GDP interact with export volume to have effects on workplace closure policy?
+
+```{r}
+mod_2 <- lm(closure ~ sum_ex*industry, data = d_f)
+summary(mod_2)
+```
+
+The interaction is not significant according to the model summary, let's test 
+the data against General Linear Model's assumptions:
+
+## Categorizing Quantitative Variable And Testing Model Assumptions 
+Before testing model assumptions, since both variables under interaction term are quantitative, for convenience of analysis and visualization, we we group the continuous values of proportion of industrial sectors' contribution to GDP into categories of 
+"High", "Low" and "Medium", and put them back into the model:
+```{r}
+# Relevel to make 'Low' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Low(> 1 sd above the mean)")
+mod2_low <- lm(closure ~ sum_ex, data = d_f[d_f$industry_group == "Low(> 1 sd above the mean)", ])
+
+# Relevel to make 'Medium' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Medium")
+mod2_medium <- lm(closure ~ sum_ex, data = d_f[d_f$industry_group == "Medium",])
+
+d_f$industry_group <- relevel(d_f$industry_group, ref = "High(< 1 sd below the mean)")
+mod2_high <- lm(closure ~ sum_ex, data = d_f[d_f$industry_group == "High(< 1 sd below the mean)",])
+```
+
+### Testing Against Normality Distribution of Error
+
+test the model for data that are in "Low" industry group
+```{r}
+x2_norms1 <- modelAssumptions(mod2_low, "NORMAL")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_norms2 <- modelAssumptions(mod2_medium, "NORMAL")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_norms3 <- modelAssumptions(mod2_high, "NORMAL")
+```
+
+All three groups fulfill the normality distribution of error. 
+
+### Testing Against Constant Variance of Error
+test the model for data that are in "Low" industry group
+```{r}
+x2_constant1 <-  modelAssumptions(mod2_low, "CONSTANT")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_constant2 <- modelAssumptions(mod2_medium, "CONSTANT")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_constant3 <- modelAssumptions(mod2_high, "CONSTANT")
+```
+
+The "Medium" group seems to have issue of heteroscedasticity
+
+### Testing Against Linearity
+test the model for data that are in "Low" industry group
+```{r}
+x2_linear1 <- modelAssumptions(mod2_low, "LINEAR")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_linear2 <- modelAssumptions(mod2_medium, "LINEAR")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_linear3 <- modelAssumptions(mod2_high, "LINEAR")
+```
+
+The "Low" group seems to have issue with linearity, the other groups both slightly 
+have issues with linearity
+
+Since models have issues with linearity and constant variance, we want to transform 
+the variable infectious rate
+
+## Apply Transformation to a predictor and Test the Model Assumptions
+
+We transformed the predictor and fit it into the model
+```{r}
+d_f$sum_ex_log <- log(d_f$sum_ex + 1)
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Low(> 1 sd above the mean)")
+mod2_tlow <- lm(closure ~ sum_ex_log, data = d_f[d_f$industry_group == "Low(> 1 sd above the mean)", ])
+
+# Relevel to make 'Medium' the reference group
+d_f$industry_group <- relevel(d_f$industry_group, ref = "Medium")
+mod2_tmedium <- lm(closure ~ sum_ex_log, data = d_f[d_f$industry_group == "Medium",])
+
+d_f$industry_group <- relevel(d_f$industry_group, ref = "High(< 1 sd below the mean)")
+mod2_thigh <- lm(closure ~ sum_ex_log, data = d_f[d_f$industry_group == "High(< 1 sd below the mean)",])
+```
+
+### Testing Transformed Model Against Normality Distribution of Error
+
+test the model for data that are in "Low" industry group
+```{r}
+x2_norms1t <- modelAssumptions(mod2_tlow, "NORMAL")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_norms2t <- modelAssumptions(mod2_tmedium, "NORMAL")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_norms3t <- modelAssumptions(mod2_thigh, "NORMAL")
+```
+
+All three groups still fulfill the normality distribution of error. 
+
+### Testing Transformed Model Against Constant Variance of Error
+test the model for data that are in "Low" industry group
+```{r}
+x2_constant1t <-  modelAssumptions(mod2_tlow, "CONSTANT")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_constant2t <- modelAssumptions(mod2_tmedium, "CONSTANT")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_constant3t <- modelAssumptions(mod2_thigh, "CONSTANT")
+```
+
+The issue of heteroscedasticity is solved 
+
+### Testing Transformed Model Against Linearity
+test the model for data that are in "Low" industry group
+```{r}
+x2_linear1t <- modelAssumptions(mod2_tlow, "LINEAR")
+```
+
+test the model for data that are in "Medium" industry group
+```{r}
+x2_linear2t <- modelAssumptions(mod2_tmedium, "LINEAR")
+```
+
+test the model for data that are in "High" industry group
+```{r}
+x2_linear3t <- modelAssumptions(mod2_thigh, "LINEAR")
+```
+
+Although the "Low" group still seems to have issue with linearity, but the issue does not seem severe since there are less observation in "Low" group than "Medium" and "High" group. 
+And after applying Model Transformation, we solved the model assumptions issues with "High"
+and "Medium" group. All the data are ready to be applied General Linear Analysis now. 
+
+## Analysing Model After Application of Transformation
+
+The interaction term is not significant, it seems that our hypothesis is not confirmed
+```{r}
+mod_2t <- lm(closure ~ sum_ex_log*industry, data = d_f)
+summary(mod_2t)
+car::Anova(mod_2t, type = 3) %>% eta_squared()
+```
+
+### Plotting the graph
+```{r}
+ggplot(d_f, aes(x = sum_ex_log, y = closure, color = industry_group)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE,  size = 1.3) +
+  labs(x = "Export Volume (log (million U.S. dollar + 1))", y = "Closure Level(higher index higher strictness)", color = "the level of Industrial sectors'\n contribution to GDP in %", title = "Interation effect between Export Volume and Industry Composition on Workplace Closures", caption = str_wrap("Closure Level:The data is from Our World in Data website. It includes workplace closure level during the pandemic by country. The higher index represents higher strictness of countries closure policy. https://ourworldindata.org/covid-school-workplace-closures; GDP composition: The data comes from The World Bank. It includes GDP composition by agriculture, industry and service by country, https://wdi.worldbank.org/table/4.2#;Export Volume: The data is from the International Monetary Fund (IMF), https://data.imf.org/regular.aspx?key=61013712.", 120)) +
+  theme_minimal() + theme(plot.title = element_text(size = 13, hjust = 0), legend.title = element_text(size = 10, margin = margin(t = -2, b = -2)), legend.box = "none",plot.caption = element_text(hjust = 0))
+```
+
+## Analysing the Outlier 
+```{r}
+x2_cooks <- modelCaseAnalysis(mod_2t, Type = "COOKSD") 
+```
+
+Look at the dfBetas, since the interaction is not significant, we want look into which 
+outlier that influence specifically the interaction term the most 
+```{r}
+x_infs <- modelCaseAnalysis(mod_2t, Type = "DFBETAS") 
+```
+
+We saw that the outliers for interaction term are: 
+```{r}
+d_f[c(76, 30), ]
+```
+
+We need to discuss further whether removal of outliers is necessary, and how our model
+estimation would change after removing the outliers 
